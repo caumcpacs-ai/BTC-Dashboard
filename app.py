@@ -10,10 +10,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.secret_key = 'ultrasound_2026'
 
-DATA_DIR  = os.path.join(BASE_DIR, 'data')
-DB_PATH   = os.path.join(DATA_DIR, 'joined.db')
-REF_PATH  = os.path.join(DATA_DIR, 'ref_file.xlsx')
-DATA_PATH = os.path.join(DATA_DIR, 'data_file.xlsx')
+DATA_DIR    = os.path.join(BASE_DIR, 'data')
+DB_PATH     = os.path.join(DATA_DIR, 'joined.db')
+REF_PATH    = os.path.join(DATA_DIR, 'ref_file.xlsx')
+DATA_PATH   = os.path.join(DATA_DIR, 'data_file.xlsx')
+APPEND_PATH = os.path.join(DATA_DIR, 'append_file.xlsx')
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -125,6 +126,130 @@ def file_info(path):
     return {'exists': False}
 
 
+# ── 월별 추가 유틸 ───────────────────────────────────────────────────────────
+
+def get_existing_months():
+    """DB에 저장된 (Year, Month) 집합 반환"""
+    if not os.path.exists(DB_PATH):
+        return set()
+    conn = get_conn()
+    cur  = conn.cursor()
+    try:
+        cur.execute('SELECT DISTINCT "Year", "Month" FROM joined_data '
+                    'WHERE "Year" IS NOT NULL AND "Month" IS NOT NULL')
+        result = {(r[0], r[1]) for r in cur.fetchall()}
+    except Exception:
+        result = set()
+    conn.close()
+    return result
+
+
+def preview_append(path):
+    """추가 파일의 월별 건수와 DB 중복 여부 반환"""
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(min_row=1, values_only=True))
+    wb.close()
+
+    if not rows:
+        raise ValueError('파일이 비어있습니다.')
+
+    headers = list(rows[0])
+    data_rows = rows[1:]
+
+    if 'Year' not in headers or 'Month' not in headers:
+        raise ValueError("'Year' 또는 'Month' 컬럼이 없습니다.")
+
+    year_idx  = headers.index('Year')
+    month_idx = headers.index('Month')
+
+    from collections import Counter
+    ym_cnt = Counter()
+    for row in data_rows:
+        yr = safe_str(row[year_idx])
+        mo = safe_str(row[month_idx])
+        if yr and mo:
+            ym_cnt[(yr, mo)] += 1
+
+    existing = get_existing_months()
+    preview = [
+        {'year': yr, 'month': mo, 'count': cnt, 'exists': (yr, mo) in existing}
+        for (yr, mo), cnt in sorted(ym_cnt.items())
+    ]
+    return preview, len(data_rows)
+
+
+def append_to_db(overwrite=False):
+    """추가 파일을 기존 DB에 append. overwrite=True 이면 중복 월 대체."""
+    ref_map = load_ref(REF_PATH)
+
+    wb = openpyxl.load_workbook(APPEND_PATH, data_only=True, read_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(min_row=1, values_only=True))
+    wb.close()
+
+    headers   = list(rows[0])
+    data_rows = rows[1:]
+
+    missing = [c for c in ('처방코드', 'Year', 'Month') if c not in headers]
+    if missing:
+        raise ValueError(f"필수 컬럼 없음: {', '.join(missing)}")
+
+    code_idx  = headers.index('처방코드')
+    year_idx  = headers.index('Year')
+    month_idx = headers.index('Month')
+
+    from collections import Counter
+    ym_cnt = Counter()
+    for row in data_rows:
+        yr = safe_str(row[year_idx])
+        mo = safe_str(row[month_idx])
+        if yr and mo:
+            ym_cnt[(yr, mo)] += 1
+
+    existing = get_existing_months()
+
+    conn = get_conn()
+    cur  = conn.cursor()
+
+    # 기존 컬럼 확인
+    cur.execute('PRAGMA table_info(joined_data)')
+    db_cols = [r[1] for r in cur.fetchall()]
+    new_cols = ['상태'] + headers
+    if db_cols != new_cols:
+        conn.close()
+        raise ValueError('추가 파일의 컬럼 구조가 기존 DB와 다릅니다.')
+
+    skipped_months = set()
+    if overwrite:
+        # 중복 월 삭제 후 재삽입
+        for (yr, mo) in ym_cnt:
+            if (yr, mo) in existing:
+                cur.execute('DELETE FROM joined_data WHERE "Year"=? AND "Month"=?', (yr, mo))
+        insert_months = set(ym_cnt.keys())
+    else:
+        # 중복 월 건너뜀, 신규 월만 삽입
+        insert_months = set(ym_cnt.keys()) - existing
+        skipped_months = set(ym_cnt.keys()) & existing
+
+    placeholders = ', '.join(['?'] * len(new_cols))
+    sql   = f'INSERT INTO joined_data VALUES ({placeholders})'
+    count = 0
+    for row in data_rows:
+        yr = safe_str(row[year_idx])
+        mo = safe_str(row[month_idx])
+        if (yr, mo) not in insert_months:
+            continue
+        code   = str(row[code_idx]).strip() if row[code_idx] else ''
+        status = ref_map.get(code, '')
+        cur.execute(sql, [status] + [safe_str(v) for v in row])
+        count += 1
+
+    conn.commit()
+    conn.close()
+    return count, skipped_months
+
+
 # ── 라우트 ────────────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -193,6 +318,48 @@ def join():
         return jsonify({'success': False, 'message': f'오류: {e}'})
 
 
+@app.route('/upload/append', methods=['POST'])
+def upload_append():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': '파일이 없습니다.'})
+    file = request.files['file']
+    if not file.filename or not file.filename.lower().endswith('.xlsx'):
+        return jsonify({'success': False, 'message': 'xlsx 파일만 가능합니다.'})
+
+    file.save(APPEND_PATH)
+    try:
+        prev, total = preview_append(APPEND_PATH)
+        return jsonify({'success': True, 'preview': prev, 'total': total})
+    except Exception as e:
+        if os.path.exists(APPEND_PATH):
+            os.remove(APPEND_PATH)
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/do_append', methods=['POST'])
+def do_append():
+    if not os.path.exists(APPEND_PATH):
+        return jsonify({'success': False, 'message': '추가 파일이 없습니다.'})
+    if not os.path.exists(DB_PATH):
+        return jsonify({'success': False, 'message': 'DB가 없습니다. 먼저 전체 조인을 실행하세요.'})
+    if not os.path.exists(REF_PATH):
+        return jsonify({'success': False, 'message': '기준파일이 없습니다.'})
+
+    overwrite = request.json.get('overwrite', False)
+    try:
+        count, skipped = append_to_db(overwrite=overwrite)
+        if os.path.exists(APPEND_PATH):
+            os.remove(APPEND_PATH)
+
+        msg = f'{count:,}건 추가 완료'
+        if skipped:
+            labels = ', '.join(f'{yr}년 {mo}월' for yr, mo in sorted(skipped))
+            msg += f' (건너뜀: {labels})'
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/api/stats')
 def api_stats():
     if not os.path.exists(DB_PATH):
@@ -208,7 +375,11 @@ def get_stats():
         cur.execute(sql)
         return cur.fetchall()
 
-    status_rows = q('SELECT "상태", COUNT(*) FROM joined_data GROUP BY "상태" ORDER BY COUNT(*) DESC')
+    try:
+        status_rows = q('SELECT "상태", COUNT(*) FROM joined_data GROUP BY "상태" ORDER BY COUNT(*) DESC')
+    except Exception:
+        conn.close()
+        return {'total': 0, 'status': [], 'monthly': [], 'section': [], 'dept': [], 'inout': [], 'section_monthly': []}
 
     try:
         monthly_rows = q('''
@@ -265,5 +436,17 @@ def get_stats():
     }
 
 
+@app.route('/view')
+def view():
+    db_info = file_info(DB_PATH)
+    stats = None
+    if db_info['exists']:
+        try:
+            stats = get_stats()
+        except Exception:
+            pass
+    return render_template('view.html', stats=stats, db_info=db_info)
+
+
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(host='0.0.0.0', port=5000)

@@ -165,6 +165,66 @@
     </div>
   </div>
 
+  <!-- ── 데이터 추가 (월별) ──────────────────────────────────────── -->
+  <div class="row g-3 mb-3">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge bg-warning text-dark rounded-pill px-2">데이터 추가</span>
+          월별 데이터 추가 — 기존 DB에 해당 월 데이터만 append
+        </div>
+        <div class="card-body">
+          <div class="row g-3 align-items-start">
+
+            <!-- 업로드 존 -->
+            <div class="col-12 col-md-3">
+              <div class="upload-zone" id="append-zone"
+                   onclick="document.getElementById('append-input').click()">
+                <div style="font-size:1.8rem">➕</div>
+                <div class="small fw-bold mt-1" style="color:#e6a800">클릭 또는 드래그</div>
+                <div class="small text-muted">추가할 월 데이터 xlsx</div>
+                <input type="file" id="append-input" accept=".xlsx" style="display:none">
+              </div>
+              <div id="append-file-name" class="mt-2"></div>
+            </div>
+
+            <!-- 미리보기 테이블 -->
+            <div class="col-12 col-md-6" id="append-preview-area" style="display:none">
+              <div class="small fw-bold mb-1 text-secondary">추가 예정 데이터</div>
+              <table class="table table-sm table-bordered mb-2">
+                <thead>
+                  <tr>
+                    <th style="text-align:center">연도</th>
+                    <th style="text-align:center">월</th>
+                    <th style="text-align:right">건수</th>
+                    <th style="text-align:center">상태</th>
+                  </tr>
+                </thead>
+                <tbody id="append-preview-tbody"></tbody>
+              </table>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="overwrite-check">
+                <label class="form-check-label small text-danger" for="overwrite-check">
+                  중복 월 기존 데이터 삭제 후 대체 (덮어쓰기)
+                </label>
+              </div>
+            </div>
+
+            <!-- 실행 버튼 -->
+            <div class="col-12 col-md-3 d-flex flex-column justify-content-center gap-2"
+                 id="append-btn-area" style="display:none">
+              <div class="small text-muted" id="append-summary"></div>
+              <button class="btn btn-warning fw-bold" id="append-btn" onclick="runAppend()">
+                ➕ 추가 실행
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 통계 영역 (DB 있을 때만) ─────────────────────────────── -->
   {% if stats %}
   <div id="stats-section">
@@ -726,6 +786,99 @@ async function runJoin() {
   } finally {
     btn.disabled = false;
     btn.textContent = '⚡ 조인 실행';
+  }
+}
+
+// ── 데이터 추가 (월별) ────────────────────────────────────────────────────────
+let appendPreviewData = [];
+
+(function () {
+  const zone  = document.getElementById('append-zone');
+  const input = document.getElementById('append-input');
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleAppendFile(e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', () => {
+    if (input.files[0]) handleAppendFile(input.files[0]);
+  });
+})();
+
+function handleAppendFile(file) {
+  document.getElementById('append-file-name').innerHTML =
+    `<div class="alert alert-warning py-1 mb-0 small">📄 ${file.name}</div>`;
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  fetch('/upload/append', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(json => {
+      if (!json.success) { showToast(false, json.message); return; }
+      appendPreviewData = json.preview;
+      renderAppendPreview(json.preview, json.total);
+    })
+    .catch(() => showToast(false, '업로드 오류'));
+}
+
+function renderAppendPreview(preview, total) {
+  const tbody  = document.getElementById('append-preview-tbody');
+  const hasDup = preview.some(r => r.exists);
+
+  tbody.innerHTML = preview.map(r => `
+    <tr>
+      <td style="text-align:center">${r.year}</td>
+      <td style="text-align:center">${r.month}월</td>
+      <td style="text-align:right">${r.count.toLocaleString()}</td>
+      <td style="text-align:center">
+        ${r.exists
+          ? '<span class="badge bg-warning text-dark">⚠ 중복</span>'
+          : '<span class="badge bg-success">✅ 신규</span>'}
+      </td>
+    </tr>`).join('');
+
+  const newCnt  = preview.filter(r => !r.exists).reduce((s, r) => s + r.count, 0);
+  const dupCnt  = preview.filter(r =>  r.exists).reduce((s, r) => s + r.count, 0);
+  let summary   = `총 ${total.toLocaleString()}건`;
+  if (hasDup) summary += ` · 신규 ${newCnt.toLocaleString()}건 / 중복 ${dupCnt.toLocaleString()}건`;
+
+  document.getElementById('append-summary').textContent = summary;
+  document.getElementById('overwrite-check').checked = false;
+  document.getElementById('append-preview-area').style.display = '';
+  document.getElementById('append-btn-area').style.display     = '';
+}
+
+async function runAppend() {
+  const overwrite = document.getElementById('overwrite-check').checked;
+  const hasDup    = appendPreviewData.some(r => r.exists);
+  const hasNew    = appendPreviewData.some(r => !r.exists);
+
+  if (hasDup && !overwrite && !hasNew) {
+    showToast(false, '모든 월이 이미 존재합니다. 덮어쓰기를 체크해 주세요.');
+    return;
+  }
+
+  const btn = document.getElementById('append-btn');
+  btn.disabled    = true;
+  btn.textContent = '처리 중...';
+
+  try {
+    const res  = await fetch('/do_append', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ overwrite }),
+    });
+    const json = await res.json();
+    showToast(json.success, json.message);
+    if (json.success) setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    showToast(false, '오류 발생');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '➕ 추가 실행';
   }
 }
 

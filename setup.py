@@ -34,6 +34,8 @@ def main():
     shutil.copy2(os.path.join(HERE, "requirements.txt"), INSTALL_DIR)
     shutil.copy2(os.path.join(HERE, "templates", "index.html"),
                  os.path.join(INSTALL_DIR, "templates"))
+    shutil.copy2(os.path.join(HERE, "templates", "view.html"),
+                 os.path.join(INSTALL_DIR, "templates"))
     ok()
 
     # ── 2. 가상환경 및 패키지 ─────────────────────────────────────────────────
@@ -50,8 +52,21 @@ def main():
         err("패키지 설치 실패 - 인터넷 연결을 확인하세요")
     ok()
 
-    # ── 3. 시작프로그램 등록 ──────────────────────────────────────────────────
-    step("[3/4] 자동 시작 등록 중...")
+    # ── 3. 방화벽 포트 개방 ──────────────────────────────────────────────────────
+    step("[3/5] 방화벽 포트 5000 개방 중 (인트라넷 배포용)...")
+    ret = subprocess.run(
+        ["netsh", "advfirewall", "firewall", "add", "rule",
+         "name=UltrasoundStats", "dir=in", "action=allow",
+         "protocol=TCP", "localport=5000"],
+        capture_output=True
+    )
+    if ret.returncode == 0:
+        ok()
+    else:
+        print("     [주의] 방화벽 설정 실패 — 관리자 권한으로 실행하거나 포트 5000을 수동 허용하세요.")
+
+    # ── 4. 시작프로그램 등록 ──────────────────────────────────────────────────
+    step("[4/5] 자동 시작 등록 중...")
     startup_bat = os.path.join(STARTUP_DIR, "UltrasoundStats.bat")
     with open(startup_bat, "w", encoding="utf-8") as f:
         f.write(textwrap.dedent(f"""\
@@ -61,8 +76,8 @@ def main():
         """))
     ok()
 
-    # ── 4. 바탕화면 바로가기 ──────────────────────────────────────────────────
-    step("[4/4] 바탕화면 바로가기 생성 중...")
+    # ── 5. 바탕화면 바로가기 ──────────────────────────────────────────────────
+    step("[5/5] 바탕화면 바로가기 생성 중...")
     url_file = os.path.join(DESKTOP, "암센터 초음파 통계.url")
     with open(url_file, "w", encoding="utf-8") as f:
         f.write("[InternetShortcut]\nURL=http://localhost:5000\n")

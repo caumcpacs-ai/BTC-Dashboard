@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>암센터 초음파 통계</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body { background: #f5f7fa; font-family: 'Malgun Gothic', sans-serif; }
+    .top-header {
+      background: linear-gradient(135deg, #1a4a7a, #2d7dd2);
+      color: #fff;
+      padding: 18px 28px;
+    }
+    .top-header h1 { font-size: 1.4rem; margin: 0; font-weight: 700; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .card-header { background: #fff; border-bottom: 2px solid #e9ecef; border-radius: 12px 12px 0 0 !important; font-weight: 700; font-size: .9rem; color: #1a4a7a; padding: 12px 18px; }
+    table thead th { background: #1a4a7a; color: #fff; font-size: .82rem; vertical-align: middle; text-align: center; }
+    table tbody td { text-align: center; vertical-align: middle; font-size: .82rem; }
+    table tbody tr:hover { background: #f0f7ff; }
+    .chart-wrap { position: relative; height: 300px; }
+    #toast-box { position: fixed; top: 18px; right: 18px; z-index: 9999; }
+    .toast { min-width: 280px; }
+    .kpi-num { font-size: 2rem; font-weight: 700; }
+    .admin-link { font-size: .75rem; opacity: .6; color: #fff; text-decoration: none; }
+    .admin-link:hover { opacity: 1; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div class="top-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1>🏥 암센터 초음파 통계 분석</h1>
+    <small class="opacity-75">중앙대학교병원 암센터
+      {% if db_info.exists %}· 최종 업데이트: {{ db_info.mtime }}{% endif %}
+    </small>
+  </div>
+  <a href="/" class="admin-link">⚙ 관리자</a>
+</div>
+
+<div class="container-fluid px-4 py-3">
+  <div id="toast-box"></div>
+
+  {% if not stats %}
+  <div class="card text-center py-5 text-muted mt-3">
+    <div style="font-size:3rem">📂</div>
+    <div class="mt-2">표시할 데이터가 없습니다. 관리자 페이지에서 데이터를 등록해 주세요.</div>
+  </div>
+
+  {% else %}
+
+  <!-- KPI 요약 -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">전체 건수</div>
+          <div class="kpi-num text-primary">{{ '{:,}'.format(stats.total) }}</div>
+          <div class="text-muted small">건</div>
+        </div>
+      </div>
+    </div>
+    {% for s in stats.status %}
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">{{ s.label }}</div>
+          <div class="kpi-num" style="color:{% if s.label=='Biopsy' %}#e05c97{% elif s.label=='일반' %}#2d7dd2{% else %}#6c757d{% endif %}">
+            {{ '{:,}'.format(s.count) }}
+          </div>
+          <div class="text-muted small">건</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 차트 행 1 -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-8">
+      <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div>📈 월별 추이 <div class="btn-group btn-group-sm ms-2" id="year-filter" style="display:inline-flex!important"></div></div>
+          <button class="btn btn-sm btn-outline-success ms-2" onclick="exportTrend()">⬇ Excel</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span>🥧 상태별 비율</span>
+          <button class="btn btn-sm btn-outline-success" onclick="exportStatus()">⬇ Excel</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 차트 행 2 -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span>📊 Section별 건수</span>
+          <button class="btn btn-sm btn-outline-success" onclick="exportSection()">⬇ Excel</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="sectionChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span>🏷 처방과 TOP 10</span>
+          <button class="btn btn-sm btn-outline-success" onclick="exportDept()">⬇ Excel</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="deptChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 연도-월별 상세 -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span>📋 연도-월별 상세</span>
+      <button class="btn btn-sm btn-outline-success" onclick="exportMonthly()">⬇ Excel</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-bordered mb-0">
+          <thead>
+            <tr>
+              <th rowspan="2" style="vertical-align:middle;text-align:center">연도</th>
+              <th rowspan="2" style="vertical-align:middle;text-align:center">월</th>
+              <th colspan="3" style="text-align:center;background:#1a4a7a;color:#fff">Thyroid</th>
+              <th colspan="3" style="text-align:center;background:#0d7a3e;color:#fff">Breast</th>
+              <th colspan="3" style="text-align:center;background:#5a5a5a;color:#fff">합계</th>
+            </tr>
+            <tr>
+              <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#dbe8f8">소계</th>
+              <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#d4edda">소계</th>
+              <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#e8e8e8">소계</th>
+            </tr>
+          </thead>
+          <tbody id="monthlyTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const RAW_MONTHLY         = {{ stats.monthly         | tojson }};
+  const RAW_STATUS          = {{ stats.status          | tojson }};
+  const RAW_SECTION         = {{ stats.section         | tojson }};
+  const RAW_DEPT            = {{ stats.dept            | tojson }};
+  const RAW_INOUT           = {{ stats.inout           | tojson }};
+  const RAW_SECTION_MONTHLY = {{ stats.section_monthly | tojson }};
+
+  const STATUS_COLORS = { 'Biopsy':'#e05c97', '일반':'#2d7dd2', '미분류':'#adb5bd' };
+
+  Chart.unregister(ChartDataLabels);
+
+  let trendChart, pieChart, sectionChart, deptChart;
+  let selectedYear = 'all';
+
+  // 연도 필터
+  const years = [...new Set(RAW_MONTHLY.map(r => r.year))].sort();
+  const filterDiv = document.getElementById('year-filter');
+  ['all', ...years].forEach(y => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline-secondary' + (y === 'all' ? ' active' : '');
+    btn.textContent = y === 'all' ? '전체' : y + '년';
+    btn.onclick = () => {
+      selectedYear = y;
+      document.querySelectorAll('#year-filter button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTrend();
+      renderMonthlyTable();
+    };
+    filterDiv.appendChild(btn);
+  });
+
+  function renderTrend() {
+    const filtered = selectedYear === 'all' ? RAW_MONTHLY
+      : RAW_MONTHLY.filter(r => String(r.year) === String(selectedYear));
+    const labelSet   = [...new Set(filtered.map(r => `${r.year}-${String(r.month).padStart(2,'0')}`))].sort();
+    const statusList = [...new Set(filtered.map(r => r.status))];
+    const datasets   = statusList.map(st => {
+      const dataMap = {};
+      filtered.filter(r => r.status === st).forEach(r => {
+        dataMap[`${r.year}-${String(r.month).padStart(2,'0')}`] = (dataMap[`${r.year}-${String(r.month).padStart(2,'0')}`] || 0) + r.count;
+      });
+      return { label: st, data: labelSet.map(k => dataMap[k] || 0),
+        borderColor: STATUS_COLORS[st]||'#999', backgroundColor:(STATUS_COLORS[st]||'#999')+'22',
+        fill:true, tension:0.4, pointRadius:3 };
+    });
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+      type:'line', data:{labels:labelSet, datasets},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}} }
+    });
+  }
+
+  function renderPie() {
+    if (pieChart) pieChart.destroy();
+    const total = RAW_STATUS.reduce((s,r)=>s+r.count,0);
+    pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+      type:'doughnut', plugins:[ChartDataLabels],
+      data:{ labels:RAW_STATUS.map(r=>r.label),
+        datasets:[{ data:RAW_STATUS.map(r=>r.count),
+          backgroundColor:RAW_STATUS.map(r=>STATUS_COLORS[r.label]||'#adb5bd'), borderWidth:2 }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{position:'bottom'},
+          tooltip:{ callbacks:{ label: ctx => {
+            const pct=((ctx.parsed/total)*100).toFixed(1);
+            return ` ${ctx.label}: ${ctx.parsed.toLocaleString()}건 (${pct}%)`;
+          }}},
+          datalabels:{ color:'#fff', font:{weight:'bold',size:13},
+            formatter: v => { const p=(v/total*100).toFixed(1); return p<3?'':p+'%'; } }
+        }
+      }
+    });
+  }
+
+  function renderSection() {
+    const sections   = [...new Set(RAW_SECTION.map(r=>r.section))];
+    const statusList = [...new Set(RAW_SECTION.map(r=>r.status))];
+    const colors     = ['#2d7dd2','#e05c97','#ffa700','#28a745','#adb5bd'];
+    const datasets   = statusList.map((st,i) => {
+      const map = {};
+      RAW_SECTION.filter(r=>r.status===st).forEach(r=>{ map[r.section]=r.count; });
+      return { label:st, data:sections.map(s=>map[s]||0), backgroundColor:colors[i%colors.length] };
+    });
+    if (sectionChart) sectionChart.destroy();
+    sectionChart = new Chart(document.getElementById('sectionChart').getContext('2d'), {
+      type:'bar', data:{labels:sections, datasets},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'top'}},
+        scales:{x:{stacked:false},y:{beginAtZero:true}} }
+    });
+  }
+
+  function renderDept() {
+    if (deptChart) deptChart.destroy();
+    deptChart = new Chart(document.getElementById('deptChart').getContext('2d'), {
+      type:'bar',
+      data:{ labels:RAW_DEPT.map(r=>r.dept),
+        datasets:[{label:'건수', data:RAW_DEPT.map(r=>r.count), backgroundColor:'#2d7dd2'}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}} }
+    });
+  }
+
+  function renderMonthlyTable() {
+    const src = selectedYear === 'all' ? RAW_SECTION_MONTHLY
+      : RAW_SECTION_MONTHLY.filter(r => String(r.year) === String(selectedYear));
+    const years = [...new Set(src.map(r=>r.year))].sort();
+    function getCount(data,section,status){
+      const r=data.find(d=>d.section===section&&d.status===status); return r?r.count:0;
+    }
+    function pct(v,s){ return s===0?'-':+(v/s*100).toFixed(1)+'%'; }
+
+    let html='';
+    years.forEach(yr => {
+      const yrData = src.filter(r=>r.year===yr);
+      const months = [...new Set(yrData.map(r=>r.month))].sort((a,b)=>a-b);
+      let yt일=0,ytB=0,yb일=0,ybB=0;
+      months.forEach((mo,idx)=>{
+        const moData=yrData.filter(r=>r.month===mo);
+        const t일=getCount(moData,'ED','일반'),tB=getCount(moData,'ED','Biopsy');
+        const b일=getCount(moData,'MAM','일반'),bB=getCount(moData,'MAM','Biopsy');
+        const tS=t일+tB,bS=b일+bB,tot일=t일+b일,totB=tB+bB,totS=tS+bS;
+        yt일+=t일;ytB+=tB;yb일+=b일;ybB+=bB;
+        html+=`<tr>
+          ${idx===0?`<td rowspan="${months.length+2}" style="vertical-align:middle;text-align:center;font-weight:700">${yr}</td>`:''}
+          <td style="text-align:center">${mo}월</td>
+          <td style="text-align:right">${t일.toLocaleString()}</td><td style="text-align:right">${tB.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#dbe8f8">${tS.toLocaleString()}</td>
+          <td style="text-align:right">${b일.toLocaleString()}</td><td style="text-align:right">${bB.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#d4edda">${bS.toLocaleString()}</td>
+          <td style="text-align:right">${tot일.toLocaleString()}</td><td style="text-align:right">${totB.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#e8e8e8">${totS.toLocaleString()}</td>
+        </tr>`;
+      });
+      const ytS=yt일+ytB,ybS=yb일+ybB,ytotS=ytS+ybS;
+      html+=`<tr style="background:#e8f0fe;font-weight:700">
+        <td style="text-align:center">합계</td>
+        <td style="text-align:right">${yt일.toLocaleString()}</td><td style="text-align:right">${ytB.toLocaleString()}</td>
+        <td style="text-align:right;background:#c5d8f0">${ytS.toLocaleString()}</td>
+        <td style="text-align:right">${yb일.toLocaleString()}</td><td style="text-align:right">${ybB.toLocaleString()}</td>
+        <td style="text-align:right;background:#b8dfc7">${ybS.toLocaleString()}</td>
+        <td style="text-align:right">${(yt일+yb일).toLocaleString()}</td><td style="text-align:right">${(ytB+ybB).toLocaleString()}</td>
+        <td style="text-align:right;background:#d0d0d0">${ytotS.toLocaleString()}</td>
+      </tr>
+      <tr style="background:#f8f9fa;color:#555;font-style:italic">
+        <td style="text-align:center">비율</td>
+        <td style="text-align:right">${pct(yt일,ytS)}</td><td style="text-align:right">${pct(ytB,ytS)}</td>
+        <td style="text-align:right;background:#dbe8f8">-</td>
+        <td style="text-align:right">${pct(yb일,ybS)}</td><td style="text-align:right">${pct(ybB,ybS)}</td>
+        <td style="text-align:right;background:#d4edda">-</td>
+        <td style="text-align:right">${pct(yt일+yb일,ytotS)}</td><td style="text-align:right">${pct(ytB+ybB,ytotS)}</td>
+        <td style="text-align:right;background:#e8e8e8">-</td>
+      </tr>`;
+    });
+    document.getElementById('monthlyTbody').innerHTML =
+      html||'<tr><td colspan="11" class="text-center text-muted py-3">데이터 없음</td></tr>';
+  }
+
+  // Excel 내보내기
+  function xlWrite(rows,filename,merges,colWidths){
+    const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(rows);
+    if(merges) ws['!merges']=merges;
+    if(colWidths) ws['!cols']=colWidths;
+    XLSX.utils.book_append_sheet(wb,ws,filename);
+    XLSX.writeFile(wb,filename+'.xlsx');
+  }
+  function exportTrend(){
+    const rows=[['연도','월','상태','건수']];
+    RAW_MONTHLY.forEach(r=>rows.push([r.year,r.month,r.status,r.count]));
+    xlWrite(rows,'월별추이');
+  }
+  function exportStatus(){
+    const total=RAW_STATUS.reduce((s,r)=>s+r.count,0);
+    const rows=[['상태','건수','비율(%)'],
+      ...RAW_STATUS.map(r=>[r.label,r.count,+(r.count/total*100).toFixed(1)]),
+      ['합계',total,100]];
+    xlWrite(rows,'상태별비율');
+  }
+  function exportSection(){
+    const rows=[['Section','상태','건수']];
+    [...new Set(RAW_SECTION.map(r=>r.section))].forEach(sec=>{
+      RAW_SECTION.filter(r=>r.section===sec).forEach(r=>rows.push([sec,r.status,r.count]));
+    });
+    xlWrite(rows,'Section별건수');
+  }
+  function exportDept(){
+    xlWrite([['처방과','건수'],...RAW_DEPT.map(r=>[r.dept,r.count])],'처방과TOP10');
+  }
+  function exportMonthly(){
+    function getCount(data,section,status){const r=data.find(d=>d.section===section&&d.status===status);return r?r.count:0;}
+    function pct(v,s){return s===0?'-':+(v/s*100).toFixed(1);}
+    const src=selectedYear==='all'?RAW_SECTION_MONTHLY:RAW_SECTION_MONTHLY.filter(r=>String(r.year)===String(selectedYear));
+    const yrs=[...new Set(src.map(r=>r.year))].sort();
+    const rows=[['연도','월','Thyroid','','','Breast','','','합계','',''],
+                ['','','일반','Biopsy','소계','일반','Biopsy','소계','일반','Biopsy','소계']];
+    const merges=[{s:{r:0,c:2},e:{r:0,c:4}},{s:{r:0,c:5},e:{r:0,c:7}},{s:{r:0,c:8},e:{r:0,c:10}}];
+    yrs.forEach(yr=>{
+      const yrData=src.filter(r=>r.year===yr);
+      const months=[...new Set(yrData.map(r=>r.month))].sort((a,b)=>a-b);
+      let yt일=0,ytB=0,yb일=0,ybB=0;
+      const startRow=rows.length;
+      months.forEach((mo,idx)=>{
+        const moData=yrData.filter(r=>r.month===mo);
+        const t일=getCount(moData,'ED','일반'),tB=getCount(moData,'ED','Biopsy');
+        const b일=getCount(moData,'MAM','일반'),bB=getCount(moData,'MAM','Biopsy');
+        yt일+=t일;ytB+=tB;yb일+=b일;ybB+=bB;
+        rows.push([idx===0?yr:'',mo+'월',t일,tB,t일+tB,b일,bB,b일+bB,t일+b일,tB+bB,t일+tB+b일+bB]);
+      });
+      merges.push({s:{r:startRow,c:0},e:{r:rows.length+1,c:0}});
+      const ytS=yt일+ytB,ybS=yb일+ybB,ytotS=ytS+ybS;
+      rows.push(['','합계',yt일,ytB,ytS,yb일,ybB,ybS,yt일+yb일,ytB+ybB,ytotS]);
+      rows.push(['','비율',pct(yt일,ytS),pct(ytB,ytS),'-',pct(yb일,ybS),pct(ybB,ybS),'-',pct(yt일+yb일,ytotS),pct(ytB+ybB,ytotS),'-']);
+    });
+    xlWrite(rows,'연도월별상세',merges,[{wch:6},{wch:5},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7}]);
+  }
+
+  function showToast(ok,msg){
+    const id='t'+Date.now(),cls=ok?'bg-success':'bg-danger';
+    document.getElementById('toast-box').insertAdjacentHTML('beforeend',
+      `<div id="${id}" class="toast align-items-center text-white ${cls} border-0 show mb-2">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('${id}').remove()"></button>
+        </div></div>`);
+    setTimeout(()=>{const el=document.getElementById(id);if(el)el.remove();},4000);
+  }
+
+  renderTrend(); renderPie(); renderSection(); renderDept(); renderMonthlyTable();
+  </script>
+
+  {% endif %}
+</div>
+</body>
+</html>

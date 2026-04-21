@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>암센터 초음파 통계</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body { background: #f5f7fa; font-family: 'Malgun Gothic', sans-serif; }
+    .top-header {
+      background: linear-gradient(135deg, #1a4a7a, #2d7dd2);
+      color: #fff;
+      padding: 18px 28px;
+    }
+    .top-header h1 { font-size: 1.4rem; margin: 0; font-weight: 700; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .card-header { background: #fff; border-bottom: 2px solid #e9ecef; border-radius: 12px 12px 0 0 !important; font-weight: 700; font-size: .9rem; color: #1a4a7a; padding: 12px 18px; }
+
+    /* 파일 카드 */
+    .file-card { border-radius: 12px; overflow: hidden; }
+    .file-card .card-header { font-size: .9rem; }
+    .upload-zone {
+      border: 2px dashed #2d7dd2; border-radius: 8px;
+      padding: 28px 16px; text-align: center; cursor: pointer;
+      transition: .2s; background: #f0f7ff;
+    }
+    .upload-zone:hover, .upload-zone.dragover { background: #dbeeff; border-color: #1a4a7a; }
+    .file-status-box {
+      border: 1px solid #dee2e6; border-radius: 8px;
+      padding: 12px 16px; background: #fff;
+    }
+    .file-status-box.loaded { border-color: #28a745; background: #f0fff4; }
+    .file-status-box.empty  { border-color: #dee2e6; background: #f8f9fa; }
+
+    /* 배지 */
+    .badge-ref  { background: #1a4a7a; }
+    .badge-data { background: #0d7a3e; }
+
+    /* 테이블 */
+    table thead th { background: #1a4a7a; color: #fff; font-size: .82rem; vertical-align: middle; text-align: center; }
+    table tbody td { text-align: center; vertical-align: middle; font-size: .82rem; }
+    table tbody tr:hover { background: #f0f7ff; }
+
+    /* 차트 */
+    .chart-wrap { position: relative; height: 300px; }
+
+    /* 토스트 */
+    #toast-box { position: fixed; top: 18px; right: 18px; z-index: 9999; }
+    .toast { min-width: 280px; }
+
+    /* 요약 숫자 */
+    .kpi-num { font-size: 2rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+<div class="top-header">
+  <h1>🏥 암센터 초음파 통계 분석</h1>
+  <small class="opacity-75">중앙대학교병원 암센터</small>
+</div>
+
+<div class="container-fluid px-4 py-3">
+  <div id="toast-box"></div>
+
+  <!-- ── 파일 관리 ─────────────────────────────────────────────── -->
+  <div class="row g-3 mb-3">
+
+    <!-- 기준파일 -->
+    <div class="col-12 col-md-5">
+      <div class="card file-card h-100">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge badge-ref rounded-pill px-2">기준파일</span>
+          코드 ↔ 상태 매핑 파일
+        </div>
+        <div class="card-body">
+          <!-- 현재 상태 -->
+          <div id="ref-status-box"
+               class="file-status-box mb-3 {% if ref_info.exists %}loaded{% else %}empty{% endif %}">
+            {% if ref_info.exists %}
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="fw-bold text-success small">✅ 저장됨</div>
+                  <div class="small text-muted mt-1">📄 {{ ref_info.name }}</div>
+                  <div class="small text-muted">{{ ref_info.size }} · {{ ref_info.mtime }}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteFile('ref')">🗑 삭제</button>
+              </div>
+            {% else %}
+              <div class="text-muted small text-center py-1">업로드된 파일 없음</div>
+            {% endif %}
+          </div>
+          <!-- 업로드 존 -->
+          <div class="upload-zone" id="ref-zone" onclick="document.getElementById('ref-input').click()">
+            <div style="font-size:1.8rem">📂</div>
+            <div class="small fw-bold text-primary mt-1">클릭 또는 드래그</div>
+            <div class="small text-muted">검사치료코드 xlsx</div>
+            <input type="file" id="ref-input" accept=".xlsx" style="display:none">
+          </div>
+          <div id="ref-pending" class="mt-2"></div>
+          <div class="d-grid mt-2">
+            <button class="btn btn-primary btn-sm" id="ref-upload-btn" disabled onclick="uploadFile('ref')">업로드 저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 데이터파일 -->
+    <div class="col-12 col-md-5">
+      <div class="card file-card h-100">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge badge-data rounded-pill px-2">데이터파일</span>
+          처방 데이터 파일
+        </div>
+        <div class="card-body">
+          <div id="data-status-box"
+               class="file-status-box mb-3 {% if data_info.exists %}loaded{% else %}empty{% endif %}">
+            {% if data_info.exists %}
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="fw-bold text-success small">✅ 저장됨</div>
+                  <div class="small text-muted mt-1">📄 {{ data_info.name }}</div>
+                  <div class="small text-muted">{{ data_info.size }} · {{ data_info.mtime }}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteFile('data')">🗑 삭제</button>
+              </div>
+            {% else %}
+              <div class="text-muted small text-center py-1">업로드된 파일 없음</div>
+            {% endif %}
+          </div>
+          <div class="upload-zone" id="data-zone" onclick="document.getElementById('data-input').click()">
+            <div style="font-size:1.8rem">📊</div>
+            <div class="small fw-bold text-success mt-1">클릭 또는 드래그</div>
+            <div class="small text-muted">통계 쿼리 xlsx</div>
+            <input type="file" id="data-input" accept=".xlsx" style="display:none">
+          </div>
+          <div id="data-pending" class="mt-2"></div>
+          <div class="d-grid mt-2">
+            <button class="btn btn-success btn-sm" id="data-upload-btn" disabled onclick="uploadFile('data')">업로드 저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 조인 실행 -->
+    <div class="col-12 col-md-2">
+      <div class="card h-100">
+        <div class="card-header">조인 & 분석</div>
+        <div class="card-body d-flex flex-column justify-content-center align-items-center text-center gap-3">
+          <div class="small text-muted">두 파일을 조인하여<br>분석 DB를 생성합니다</div>
+          {% if db_info.exists %}
+          <div class="small text-success fw-bold">✅ DB 있음<br><span class="text-muted fw-normal">{{ db_info.mtime }}</span></div>
+          {% else %}
+          <div class="small text-muted">DB 없음</div>
+          {% endif %}
+          <button class="btn btn-warning w-100 fw-bold" id="join-btn"
+            {% if not ref_info.exists or not data_info.exists %}disabled{% endif %}
+            onclick="runJoin()">
+            ⚡ 조인 실행
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 통계 영역 (DB 있을 때만) ─────────────────────────────── -->
+  {% if stats %}
+  <div id="stats-section">
+
+    <!-- KPI 요약 -->
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="card text-center">
+          <div class="card-body py-3">
+            <div class="text-muted small mb-1">전체 건수</div>
+            <div class="kpi-num text-primary">{{ '{:,}'.format(stats.total) }}</div>
+            <div class="text-muted small">건</div>
+          </div>
+        </div>
+      </div>
+      {% for s in stats.status %}
+      <div class="col-6 col-md-3">
+        <div class="card text-center">
+          <div class="card-body py-3">
+            <div class="text-muted small mb-1">{{ s.label }}</div>
+            <div class="kpi-num" style="color:{% if s.label=='Biopsy' %}#e05c97{% elif s.label=='일반' %}#2d7dd2{% else %}#6c757d{% endif %}">
+              {{ '{:,}'.format(s.count) }}
+            </div>
+            <div class="text-muted small">건</div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="row g-3 mb-3">
+      <!-- 월별 추이 -->
+      <div class="col-12 col-lg-8">
+        <div class="card">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <div>📈 월별 추이 <div class="btn-group btn-group-sm ms-2" id="year-filter" style="display:inline-flex!important"></div></div>
+            <button class="btn btn-sm btn-outline-success ms-2" onclick="exportTrend()">⬇ Excel</button>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <!-- 상태 파이 -->
+      <div class="col-12 col-lg-4">
+        <div class="card">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <span>🥧 상태별 비율</span>
+            <button class="btn btn-sm btn-outline-success" onclick="exportStatus()">⬇ Excel</button>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <!-- Section별 -->
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <span>📊 Section별 건수</span>
+            <button class="btn btn-sm btn-outline-success" onclick="exportSection()">⬇ Excel</button>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas id="sectionChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <!-- 처방과 TOP10 -->
+      <div class="col-12 col-lg-6">
+        <div class="card">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <span>🏷 처방과 TOP 10</span>
+            <button class="btn btn-sm btn-outline-success" onclick="exportDept()">⬇ Excel</button>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas id="deptChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 연도-월별 상세 테이블 -->
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>📋 연도-월별 상세</span>
+        <button class="btn btn-sm btn-outline-success" onclick="exportMonthly()">⬇ Excel</button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-bordered mb-0" id="monthlyTable">
+            <thead>
+              <tr>
+                <th rowspan="2" style="vertical-align:middle;text-align:center">연도</th>
+                <th rowspan="2" style="vertical-align:middle;text-align:center">월</th>
+                <th colspan="3" style="text-align:center;background:#1a4a7a;color:#fff">Thyroid</th>
+                <th colspan="3" style="text-align:center;background:#0d7a3e;color:#fff">Breast</th>
+                <th colspan="3" style="text-align:center;background:#5a5a5a;color:#fff">합계</th>
+              </tr>
+              <tr>
+                <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#dbe8f8">소계</th>
+                <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#d4edda">소계</th>
+                <th style="text-align:center">일반</th><th style="text-align:center">Biopsy</th><th style="text-align:center;background:#e8e8e8">소계</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stats-section -->
+
+  <script>
+  const RAW_MONTHLY         = {{ stats.monthly         | tojson }};
+  const RAW_STATUS          = {{ stats.status          | tojson }};
+  const RAW_SECTION         = {{ stats.section         | tojson }};
+  const RAW_DEPT            = {{ stats.dept            | tojson }};
+  const RAW_INOUT           = {{ stats.inout           | tojson }};
+  const RAW_SECTION_MONTHLY = {{ stats.section_monthly | tojson }};
+
+  const STATUS_COLORS = {
+    'Biopsy': '#e05c97',
+    '일반':   '#2d7dd2',
+    '미분류': '#adb5bd',
+  };
+
+  // datalabels 는 파이 차트에만 사용 (전역 등록 해제)
+  Chart.unregister(ChartDataLabels);
+
+  let trendChart, pieChart, sectionChart, deptChart;
+  let selectedYear = 'all';
+
+  // ── 연도 필터 버튼 생성 ──
+  const years = [...new Set(RAW_MONTHLY.map(r => r.year))].sort();
+  const filterDiv = document.getElementById('year-filter');
+  ['all', ...years].forEach(y => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline-secondary' + (y === 'all' ? ' active' : '');
+    btn.textContent = y === 'all' ? '전체' : y + '년';
+    btn.onclick = () => {
+      selectedYear = y;
+      document.querySelectorAll('#year-filter button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTrend();
+      renderMonthlyTable();
+    };
+    filterDiv.appendChild(btn);
+  });
+
+  // ── 월별 추이 차트 ──
+  function renderTrend() {
+    const filtered = selectedYear === 'all'
+      ? RAW_MONTHLY
+      : RAW_MONTHLY.filter(r => String(r.year) === String(selectedYear));
+
+    const labelSet = [...new Set(filtered.map(r => `${r.year}-${String(r.month).padStart(2,'0')}`))].sort();
+    const statusList = [...new Set(filtered.map(r => r.status))];
+
+    const datasets = statusList.map(st => {
+      const dataMap = {};
+      filtered.filter(r => r.status === st).forEach(r => {
+        const key = `${r.year}-${String(r.month).padStart(2,'0')}`;
+        dataMap[key] = (dataMap[key] || 0) + r.count;
+      });
+      return {
+        label: st,
+        data: labelSet.map(k => dataMap[k] || 0),
+        borderColor: STATUS_COLORS[st] || '#999',
+        backgroundColor: (STATUS_COLORS[st] || '#999') + '22',
+        fill: true, tension: 0.4, pointRadius: 3,
+      };
+    });
+
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelSet, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: { y: { beginAtZero: true } },
+      },
+    });
+  }
+
+  // ── 상태 파이 ──
+  function renderPie() {
+    if (pieChart) pieChart.destroy();
+    const total = RAW_STATUS.reduce((s, r) => s + r.count, 0);
+    pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+      type: 'doughnut',
+      plugins: [ChartDataLabels],
+      data: {
+        labels: RAW_STATUS.map(r => r.label),
+        datasets: [{
+          data: RAW_STATUS.map(r => r.count),
+          backgroundColor: RAW_STATUS.map(r => STATUS_COLORS[r.label] || '#adb5bd'),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                return ` ${ctx.label}: ${ctx.parsed.toLocaleString()}건 (${pct}%)`;
+              },
+            },
+          },
+          datalabels: {
+            color: '#fff',
+            font: { weight: 'bold', size: 13 },
+            formatter: (value) => {
+              const pct = (value / total * 100).toFixed(1);
+              return pct < 3 ? '' : pct + '%';
+            },
+          },
+        },
+      },
+    });
+  }
+
+  // ── Section 차트 ──
+  function renderSection() {
+    const sections = [...new Set(RAW_SECTION.map(r => r.section))];
+    const statusList = [...new Set(RAW_SECTION.map(r => r.status))];
+    const colors = ['#2d7dd2', '#e05c97', '#ffa700', '#28a745', '#adb5bd'];
+
+    const datasets = statusList.map((st, i) => {
+      const map = {};
+      RAW_SECTION.filter(r => r.status === st).forEach(r => { map[r.section] = r.count; });
+      return {
+        label: st,
+        data: sections.map(s => map[s] || 0),
+        backgroundColor: colors[i % colors.length],
+      };
+    });
+
+    if (sectionChart) sectionChart.destroy();
+    sectionChart = new Chart(document.getElementById('sectionChart').getContext('2d'), {
+      type: 'bar',
+      data: { labels: sections, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: { x: { stacked: false }, y: { beginAtZero: true } },
+      },
+    });
+  }
+
+  // ── 처방과 차트 ──
+  function renderDept() {
+    if (deptChart) deptChart.destroy();
+    deptChart = new Chart(document.getElementById('deptChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: RAW_DEPT.map(r => r.dept),
+        datasets: [{
+          label: '건수',
+          data: RAW_DEPT.map(r => r.count),
+          backgroundColor: '#2d7dd2',
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true } },
+      },
+    });
+  }
+
+  // ── 연도-월별 상세 테이블 (Thyroid=ED / Breast=MAM) ──
+  function renderMonthlyTable() {
+    const filtered = selectedYear === 'all'
+      ? RAW_SECTION_MONTHLY
+      : RAW_SECTION_MONTHLY.filter(r => String(r.year) === String(selectedYear));
+
+    // 연도 목록
+    const years = [...new Set(filtered.map(r => r.year))].sort();
+
+    // 값 조회 헬퍼
+    function getCount(data, section, status) {
+      const r = data.find(d => d.section === section && d.status === status);
+      return r ? r.count : 0;
+    }
+
+    // 비율 포맷 (소계 대비 %)
+    function pct(val, sub) {
+      if (sub === 0) return '-';
+      return (val / sub * 100).toFixed(1) + '%';
+    }
+
+    let html = '';
+    years.forEach(yr => {
+      const yrData = filtered.filter(r => r.year === yr);
+      const months = [...new Set(yrData.map(r => r.month))].sort((a, b) => a - b);
+
+      // 연간 누계
+      let yt일반 = 0, ytBio = 0, yb일반 = 0, ybBio = 0;
+
+      months.forEach((mo, idx) => {
+        const moData = yrData.filter(r => r.month === mo);
+        const t일반 = getCount(moData, 'ED',  '일반');
+        const tBio  = getCount(moData, 'ED',  'Biopsy');
+        const b일반 = getCount(moData, 'MAM', '일반');
+        const bBio  = getCount(moData, 'MAM', 'Biopsy');
+        const tSub  = t일반 + tBio;
+        const bSub  = b일반 + bBio;
+        const tot일반 = t일반 + b일반;
+        const totBio  = tBio  + bBio;
+        const totSub  = tSub  + bSub;
+
+        yt일반 += t일반; ytBio += tBio;
+        yb일반 += b일반; ybBio += bBio;
+
+        html += `<tr>
+          ${idx === 0 ? `<td rowspan="${months.length + 2}" style="vertical-align:middle;text-align:center;font-weight:700">${yr}</td>` : ''}
+          <td style="text-align:center">${mo}월</td>
+          <td style="text-align:right">${t일반.toLocaleString()}</td>
+          <td style="text-align:right">${tBio.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#dbe8f8">${tSub.toLocaleString()}</td>
+          <td style="text-align:right">${b일반.toLocaleString()}</td>
+          <td style="text-align:right">${bBio.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#d4edda">${bSub.toLocaleString()}</td>
+          <td style="text-align:right">${tot일반.toLocaleString()}</td>
+          <td style="text-align:right">${totBio.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:600;background:#e8e8e8">${totSub.toLocaleString()}</td>
+        </tr>`;
+      });
+
+      // 합계 행
+      const ytSub = yt일반 + ytBio;
+      const ybSub = yb일반 + ybBio;
+      const ytot일반 = yt일반 + yb일반;
+      const ytotBio  = ytBio  + ybBio;
+      const ytotSub  = ytSub  + ybSub;
+
+      html += `<tr style="background:#e8f0fe;font-weight:700">
+        <td style="text-align:center">합계</td>
+        <td style="text-align:right">${yt일반.toLocaleString()}</td>
+        <td style="text-align:right">${ytBio.toLocaleString()}</td>
+        <td style="text-align:right;background:#c5d8f0">${ytSub.toLocaleString()}</td>
+        <td style="text-align:right">${yb일반.toLocaleString()}</td>
+        <td style="text-align:right">${ybBio.toLocaleString()}</td>
+        <td style="text-align:right;background:#b8dfc7">${ybSub.toLocaleString()}</td>
+        <td style="text-align:right">${ytot일반.toLocaleString()}</td>
+        <td style="text-align:right">${ytotBio.toLocaleString()}</td>
+        <td style="text-align:right;background:#d0d0d0">${ytotSub.toLocaleString()}</td>
+      </tr>`;
+
+      // 비율 행
+      html += `<tr style="background:#f8f9fa;color:#555;font-style:italic">
+        <td style="text-align:center">비율</td>
+        <td style="text-align:right">${pct(yt일반, ytSub)}</td>
+        <td style="text-align:right">${pct(ytBio, ytSub)}</td>
+        <td style="text-align:right;background:#dbe8f8">-</td>
+        <td style="text-align:right">${pct(yb일반, ybSub)}</td>
+        <td style="text-align:right">${pct(ybBio, ybSub)}</td>
+        <td style="text-align:right;background:#d4edda">-</td>
+        <td style="text-align:right">${pct(ytot일반, ytotSub)}</td>
+        <td style="text-align:right">${pct(ytotBio, ytotSub)}</td>
+        <td style="text-align:right;background:#e8e8e8">-</td>
+      </tr>`;
+    });
+
+    document.getElementById('monthlyTbody').innerHTML =
+      html || '<tr><td colspan="11" class="text-center text-muted py-3">데이터 없음</td></tr>';
+  }
+
+  // ── Excel 내보내기 ────────────────────────────────────────────────────────
+  function xlWrite(rows, filename, merges, colWidths) {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (merges)    ws['!merges'] = merges;
+    if (colWidths) ws['!cols']   = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, filename);
+    XLSX.writeFile(wb, filename + '.xlsx');
+  }
+
+  function exportTrend() {
+    const rows = [['연도', '월', '상태', '건수']];
+    RAW_MONTHLY.forEach(r => rows.push([r.year, r.month, r.status, r.count]));
+    xlWrite(rows, '월별추이');
+  }
+
+  function exportStatus() {
+    const total = RAW_STATUS.reduce((s, r) => s + r.count, 0);
+    const rows = [
+      ['상태', '건수', '비율(%)'],
+      ...RAW_STATUS.map(r => [r.label, r.count, +(r.count / total * 100).toFixed(1)]),
+      ['합계', total, 100],
+    ];
+    xlWrite(rows, '상태별비율');
+  }
+
+  function exportSection() {
+    const rows = [['Section', '상태', '건수']];
+    const sections = [...new Set(RAW_SECTION.map(r => r.section))];
+    sections.forEach(sec => {
+      RAW_SECTION.filter(r => r.section === sec)
+                 .forEach(r => rows.push([sec, r.status, r.count]));
+    });
+    xlWrite(rows, 'Section별건수');
+  }
+
+  function exportDept() {
+    const rows = [['처방과', '건수'], ...RAW_DEPT.map(r => [r.dept, r.count])];
+    xlWrite(rows, '처방과TOP10');
+  }
+
+  function exportMonthly() {
+    function getCount(data, section, status) {
+      const r = data.find(d => d.section === section && d.status === status);
+      return r ? r.count : 0;
+    }
+    function pct(v, s) { return s === 0 ? '-' : +(v / s * 100).toFixed(1); }
+
+    const src = selectedYear === 'all'
+      ? RAW_SECTION_MONTHLY
+      : RAW_SECTION_MONTHLY.filter(r => String(r.year) === String(selectedYear));
+
+    const years = [...new Set(src.map(r => r.year))].sort();
+
+    const rows = [
+      ['연도', '월', 'Thyroid', '', '', 'Breast', '', '', '합계', '', ''],
+      ['',     '',  '일반', 'Biopsy', '소계', '일반', 'Biopsy', '소계', '일반', 'Biopsy', '소계'],
+    ];
+    const merges = [
+      {s:{r:0,c:2},e:{r:0,c:4}},
+      {s:{r:0,c:5},e:{r:0,c:7}},
+      {s:{r:0,c:8},e:{r:0,c:10}},
+    ];
+
+    years.forEach(yr => {
+      const yrData = src.filter(r => r.year === yr);
+      const months = [...new Set(yrData.map(r => r.month))].sort((a, b) => a - b);
+      let yt일=0, ytB=0, yb일=0, ybB=0;
+      const yearStartRow = rows.length;
+
+      months.forEach((mo, idx) => {
+        const moData = yrData.filter(r => r.month === mo);
+        const t일 = getCount(moData,'ED','일반'),  tB = getCount(moData,'ED','Biopsy');
+        const b일 = getCount(moData,'MAM','일반'), bB = getCount(moData,'MAM','Biopsy');
+        yt일+=t일; ytB+=tB; yb일+=b일; ybB+=bB;
+        rows.push([idx===0 ? yr : '', mo+'월',
+          t일, tB, t일+tB, b일, bB, b일+bB, t일+b일, tB+bB, t일+tB+b일+bB]);
+      });
+
+      // 연도 셀 병합 (합계·비율 포함)
+      merges.push({s:{r:yearStartRow,c:0}, e:{r:rows.length+1,c:0}});
+
+      const ytS=yt일+ytB, ybS=yb일+ybB, ytotS=ytS+ybS;
+      rows.push(['', '합계', yt일, ytB, ytS, yb일, ybB, ybS, yt일+yb일, ytB+ybB, ytotS]);
+      rows.push(['', '비율',
+        pct(yt일,ytS), pct(ytB,ytS), '-',
+        pct(yb일,ybS), pct(ybB,ybS), '-',
+        pct(yt일+yb일,ytotS), pct(ytB+ybB,ytotS), '-']);
+    });
+
+    xlWrite(rows, '연도월별상세', merges,
+      [{wch:6},{wch:5},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7}]);
+  }
+
+  renderTrend();
+  renderPie();
+  renderSection();
+  renderDept();
+  renderMonthlyTable();
+  </script>
+
+  {% else %}
+  <div class="card text-center py-5 text-muted mb-4">
+    <div style="font-size:3rem">📂</div>
+    <div class="mt-2">기준파일과 데이터파일을 업로드한 후 <strong>조인 실행</strong>을 눌러주세요.</div>
+  </div>
+  {% endif %}
+
+</div><!-- /container -->
+
+<script>
+// ── 파일 업로드 공통 ──────────────────────────────────────────────────────────
+const fileState = { ref: null, data: null };
+
+['ref', 'data'].forEach(type => {
+  const zone  = document.getElementById(`${type}-zone`);
+  const input = document.getElementById(`${type}-input`);
+  const btn   = document.getElementById(`${type}-upload-btn`);
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) setFile(type, e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', () => {
+    if (input.files[0]) setFile(type, input.files[0]);
+  });
+});
+
+function setFile(type, file) {
+  fileState[type] = file;
+  const pending = document.getElementById(`${type}-pending`);
+  pending.innerHTML = `<div class="alert alert-info py-1 mb-0 small">📄 ${file.name}</div>`;
+  document.getElementById(`${type}-upload-btn`).disabled = false;
+}
+
+async function uploadFile(type) {
+  const file = fileState[type];
+  if (!file) return;
+  const btn = document.getElementById(`${type}-upload-btn`);
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res  = await fetch(`/upload/${type}`, { method: 'POST', body: fd });
+    const json = await res.json();
+    showToast(json.success, json.message);
+    if (json.success) setTimeout(() => location.reload(), 1000);
+  } catch (e) {
+    showToast(false, '업로드 오류');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = type === 'ref' ? '업로드 저장' : '업로드 저장';
+  }
+}
+
+async function deleteFile(type) {
+  const label = type === 'ref' ? '기준파일' : '데이터파일';
+  if (!confirm(`${label}을 삭제하시겠습니까?\n(조인 DB도 함께 삭제됩니다)`)) return;
+
+  const res  = await fetch(`/delete/${type}`, { method: 'POST' });
+  const json = await res.json();
+  showToast(json.success, json.message);
+  if (json.success) setTimeout(() => location.reload(), 1000);
+}
+
+async function runJoin() {
+  const btn = document.getElementById('join-btn');
+  btn.disabled = true;
+  btn.textContent = '처리 중...';
+
+  try {
+    const res  = await fetch('/join', { method: 'POST' });
+    const json = await res.json();
+    showToast(json.success, json.message);
+    if (json.success) setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    showToast(false, '오류 발생');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ 조인 실행';
+  }
+}
+
+function showToast(ok, msg) {
+  const id  = 'toast-' + Date.now();
+  const cls = ok ? 'bg-success' : 'bg-danger';
+  document.getElementById('toast-box').insertAdjacentHTML('beforeend', `
+    <div id="${id}" class="toast align-items-center text-white ${cls} border-0 show mb-2">
+      <div class="d-flex">
+        <div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('${id}').remove()"></button>
+      </div>
+    </div>`);
+  setTimeout(() => { const el = document.getElementById(id); if (el) el.remove(); }, 4000);
+}
+</script>
+</body>
+</html>

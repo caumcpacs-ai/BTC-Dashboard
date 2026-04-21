@@ -1,0 +1,22 @@
+# 데이터 파일 (환자 데이터 제외)
+data/
+uploads/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# SQLite DB
+*.db
+
+# 빌드/배포 산출물
+build/
+dist/
+release/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db

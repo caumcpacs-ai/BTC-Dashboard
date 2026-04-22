@@ -1,0 +1,12 @@
+node_modules/
+uploads/
+*.accdb
+*.xlsx
+*.csv
+*.json
+scratch/
+test_*.ps1
+test_*.json
+test_*.js
+temp_*
+*.log

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Statistics Dashboard</title>
+  <meta name="description" content="Beautiful statistics dashboard with charts, analytics and activity tracking" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="app-wrapper">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon"></span>
+        <span class="logo-text">GR Part 현황</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item" id="nav-general">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </span>
+          <span class="nav-label">General</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-contacts">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </span>
+          <span class="nav-label">Contacts</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-jobs">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" />
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            </svg>
+          </span>
+          <span class="nav-label">Jobs</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-downloads">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </span>
+          <span class="nav-label">Downloads</span>
+        </a>
+        <a href="#" class="nav-item active" id="nav-message">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </span>
+          <span class="nav-label">Message</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-friends">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </span>
+          <span class="nav-label">Friends</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-statistics">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </svg>
+          </span>
+          <span class="nav-label">Statistics</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-settings">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+            </svg>
+          </span>
+          <span class="nav-label">Settings</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-more">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1" />
+              <circle cx="19" cy="12" r="1" />
+              <circle cx="5" cy="12" r="1" />
+            </svg>
+          </span>
+          <span class="nav-label">More</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-toggle-group">
+          <div class="toggle-item active"></div>
+          <div class="toggle-item"></div>
+        </div>
+        <div class="sidebar-menu-lines">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main-content">
+
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <div class="topbar-search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="search-input" class="search-input"
+            placeholder="Solum idque diceret vim at, congue facilis no mea" />
+        </div>
+        <div class="topbar-actions">
+          <button class="action-btn" id="btn-search" title="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+          <button class="action-btn notification-btn" id="btn-notification" title="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span class="notif-badge">3</span>
+          </button>
+          <button class="action-btn avatar-btn" id="btn-profile" title="Profile">
+            <div class="avatar-circle">U</div>
+          </button>
+          <button class="action-btn" id="btn-menu" title="Menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- DASHBOARD GRID -->
+      <div class="dashboard-grid">
+
+        <!-- ROW 1: Transition + Product Statistic -->
+        <div class="card card-transition" id="card-transition">
+          <h2 class="card-title">TRANSITION</h2>
+          <p class="card-subtitle">Ad tantas &nbsp;<strong>2020</strong></p>
+          <div class="chart-row">
+            <div class="chart-wrap">
+              <canvas id="transitionChart" width="260" height="160"></canvas>
+            </div>
+            <div class="legend-list">
+              <div class="legend-item"><span class="dot" style="background:#7c6ff7"></span><span class="legend-label">Te
+                  tota</span><span class="legend-val">15.3%</span></div>
+              <div class="legend-item"><span class="dot" style="background:#f76f9d"></span><span
+                  class="legend-label">Posse</span><span class="legend-val">5.42%</span></div>
+              <div class="legend-item"><span class="dot" style="background:#4dd9c4"></span><span
+                  class="legend-label">Vis an</span><span class="legend-val">45.8</span></div>
+              <div class="legend-item"><span class="dot" style="background:#f7c36f"></span><span
+                  class="legend-label">Electram</span><span class="legend-val">144.7</span></div>
+              <div class="legend-item"><span class="dot" style="background:#6faef7"></span><span
+                  class="legend-label">Electram</span><span class="legend-val">127.8</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card-product" id="card-product">
+          <h2 class="card-title">PRODUCT STATISTIC</h2>
+          <div class="product-inner">
+            <div class="product-chart-wrap">
+              <canvas id="productChart" width="200" height="200"></canvas>
+            </div>
+            <div class="product-stats">
+              <div class="product-amount">715.8 <span class="currency">$</span></div>
+              <div class="product-badge up">↑ 12%</div>
+              <div class="product-legend">
+                <div class="prod-row"><span class="dot" style="background:#7c6ff7"></span><span>57%</span><span
+                    class="arr up">↑ 270.K</span></div>
+                <div class="prod-row"><span class="dot" style="background:#f76f9d"></span><span>67.2</span><span
+                    class="arr up">↑ 0.k</span></div>
+                <div class="prod-row"><span class="dot" style="background:#4dd9c4"></span><span>45.98</span></div>
+              </div>
+              <p class="product-note">Solum idque diceret vim Electram</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW 2: Sales + Finance + Activity -->
+        <div class="card card-sales" id="card-sales">
+          <h2 class="card-title">SALES</h2>
+          <div class="sales-inner">
+            <div class="donut-wrap">
+              <canvas id="salesChart" width="200" height="200"></canvas>
+              <div class="donut-center">
+                <span class="donut-icon">$</span>
+                <span class="donut-value">125.5</span>
+              </div>
+            </div>
+            <div class="sales-labels">
+              <div class="pct-label" style="top:5%;left:55%">72.3%</div>
+              <div class="pct-label" style="top:30%;left:78%">4.5%</div>
+              <div class="pct-label" style="top:70%;left:68%">8.1%</div>
+              <div class="pct-label" style="top:80%;left:38%">3.2%</div>
+              <div class="pct-label" style="top:65%;left:5%">24.2%</div>
+              <div class="pct-label" style="top:20%;left:5%">12%</div>
+            </div>
+          </div>
+          <div class="sales-total">
+            <span class="sales-amount">$ 1532.15</span>
+            <span class="sales-change up">▲ +74.5%</span>
+          </div>
+        </div>
+
+        <div class="card card-finance" id="card-finance">
+          <h2 class="card-title">FINANCE</h2>
+          <div class="finance-bubbles">
+            <div class="bubble bubble-lg" style="background:linear-gradient(135deg,#7c6ff7,#a78bfa)">
+              <span class="b-label">Finance</span>
+              <span class="b-val">12.5</span>
+            </div>
+            <div class="bubble bubble-md" style="background:linear-gradient(135deg,#f76f9d,#fb7185)">
+              <span class="b-label">Finance</span>
+              <span class="b-val">10.2</span>
+            </div>
+            <div class="bubble bubble-sm" style="background:linear-gradient(135deg,#4dd9c4,#22d3ee)">
+              <span class="b-label">Finance</span>
+              <span class="b-val">11.5</span>
+            </div>
+            <div class="bubble bubble-xs" style="background:linear-gradient(135deg,#f7c36f,#fbbf24)">
+              <span class="b-label">Finance</span>
+              <span class="b-val">18.2</span>
+            </div>
+            <div class="bubble bubble-xxs" style="background:linear-gradient(135deg,#6faef7,#60a5fa)">
+              <span class="b-label">Finance</span>
+              <span class="b-val">09.4</span>
+            </div>
+          </div>
+          <div class="finance-footer">
+            <span class="fin-stat up">↑ 10k</span>
+            <span class="fin-stat neutral">+457</span>
+            <span class="fin-stat down">↓ 337</span>
+          </div>
+        </div>
+
+        <div class="card card-activity" id="card-activity">
+          <h2 class="card-title">ACTIVITY</h2>
+          <div class="activity-inner">
+            <div class="radial-wrap">
+              <canvas id="activityChart" width="180" height="180"></canvas>
+              <div class="radial-center">
+                <span class="radial-value">32.5K</span>
+                <span class="radial-change up">↑ +8%</span>
+              </div>
+            </div>
+            <div class="activity-legend">
+              <span class="act-label">Finance</span>
+              <span class="act-change down">↓ Finance</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW 3: Mini bar charts -->
+        <div class="card card-mini-bars" id="card-mini-bars">
+          <div class="mini-bar-group">
+            <div class="mini-bar-item">
+              <span class="mini-label">Facer</span>
+              <span class="mini-change up">↑+16%</span>
+              <canvas class="mini-canvas" id="miniBar1" width="70" height="50"></canvas>
+            </div>
+            <div class="mini-bar-item">
+              <span class="mini-label">Vis an</span>
+              <span class="mini-change down">↓-3%</span>
+              <canvas class="mini-canvas" id="miniBar2" width="70" height="50"></canvas>
+            </div>
+            <div class="mini-bar-item">
+              <span class="mini-label">Posse</span>
+              <span class="mini-change up">↑+9%</span>
+              <canvas class="mini-canvas" id="miniBar3" width="70" height="50"></canvas>
+            </div>
+            <div class="mini-bar-item">
+              <span class="mini-label">Te tota</span>
+              <span class="mini-change down">↓-2%</span>
+              <canvas class="mini-canvas" id="miniBar4" width="70" height="50"></canvas>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /dashboard-grid -->
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

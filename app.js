@@ -30,9 +30,10 @@ Chart.defaults.plugins.tooltip.padding = 10;
 Chart.defaults.animation.duration = 900;
 Chart.defaults.animation.easing = "easeOutQuart";
 
-let chartMonthlyTotal, chartMonthlyByYear, chartMonthlyInOut;
+let chartMonthlyTotal, chartMonthlyByYear, chartMonthlyInOut, chartTotalBar, chartInOutLine;
 
 let currentDashboardData = null;
+let isTotalChartRendered = false; // Flag for fixed chart
 let currentFilters = {};
 
 const FILTER_LABELS = {
@@ -58,7 +59,10 @@ async function fetchDashboardData() {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch stats');
     currentDashboardData = await res.json();
-    renderCharts(currentDashboardData);
+    
+    // Check if filters are empty to treat as initial/total data
+    const isNoFilters = Object.keys(filterObj).length === 0;
+    renderCharts(currentDashboardData, isNoFilters);
   } catch (err) {
     console.error('Error fetching dashboard data:', err);
   }
@@ -79,7 +83,27 @@ async function fetchFilters() {
 function renderSlicers(filterData) {
   const container = document.getElementById('slicer-container');
   if (!container) return;
+  
+  if (!filterData || Object.keys(filterData).length === 0) {
+    container.innerHTML = '<div style="padding:20px; color:rgba(255,255,255,0.5); font-size:12px; text-align:center;">슬라이서를 불러오는 중이거나 데이터가 없습니다...</div>';
+    return;
+  }
+  
   container.innerHTML = '';
+  
+  // 조회 (Search) Button at the top
+  const searchBtn = document.createElement('button');
+  searchBtn.className = 'btn-search-slicer';
+  searchBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    조회하기
+  `;
+  searchBtn.addEventListener('click', () => {
+    fetchDashboardData();
+  });
+  container.appendChild(searchBtn);
 
   for (let key of Object.keys(FILTER_LABELS)) {
     if (!filterData[key] || filterData[key].length === 0) continue;
@@ -111,19 +135,6 @@ function renderSlicers(filterData) {
     if (isGrid3) {
       itemsDiv.style.display = 'grid';
       itemsDiv.style.gridTemplateColumns = 'repeat(3, 1fr)';
-      itemsDiv.style.gap = '4px';
-      itemsDiv.style.padding = '8px';
-      const rows = Math.ceil(items.length / 3);
-      itemsDiv.style.maxHeight = (rows * 32 + 40 + 12) + 'px';
-      itemsDiv.style.overflowY = 'visible';
-    } else {
-      const ITEM_HEIGHT = 30;
-      const PADDING = 16;
-      const maxVisible = 5;
-      const totalItems = items.length + 1;
-      const dynamicHeight = Math.min(totalItems, maxVisible) * ITEM_HEIGHT + PADDING;
-      itemsDiv.style.maxHeight = dynamicHeight + 'px';
-      itemsDiv.style.overflowY = totalItems > maxVisible ? 'auto' : 'visible';
     }
 
     currentFilters[key] = [];
@@ -144,7 +155,7 @@ function renderSlicers(filterData) {
       currentFilters[key] = [];
       itemsDiv.querySelectorAll('.slicer-item:not(.slicer-all)').forEach(n => n.classList.remove('active'));
       allDiv.classList.add('active');
-      fetchDashboardData();
+      // Automatic fetch removed as requested
     });
     itemsDiv.appendChild(allDiv);
 
@@ -169,7 +180,7 @@ function renderSlicers(filterData) {
           currentFilters[key] = currentFilters[key].filter(v => v !== val);
         }
         refreshAllState();
-        fetchDashboardData();
+        // Automatic fetch removed as requested
       });
 
       itemsDiv.appendChild(itemDiv);
@@ -180,13 +191,68 @@ function renderSlicers(filterData) {
       currentFilters[key] = [];
       itemsDiv.querySelectorAll('.slicer-item:not(.slicer-all)').forEach(n => n.classList.remove('active'));
       allDiv.classList.add('active');
-      fetchDashboardData();
+      // Automatic fetch removed as requested
     });
 
     groupDiv.appendChild(titleDiv);
     groupDiv.appendChild(itemsDiv);
     container.appendChild(groupDiv);
   }
+}
+
+// ─── NEW: 전체 검사 현황 (고정 막대 그래프) ───────────
+function renderTotalBarChart(monthlyData) {
+  const ctx = document.getElementById('chartTotalBar');
+  if (!ctx || !monthlyData || !monthlyData.length) return;
+
+  const monthKeys = buildMonthKeys(monthlyData);
+  const data = monthKeys.map(mk => {
+    const [y, m] = mk.split('-');
+    return monthlyData
+      .filter(d => String(d.YR) === y && String(d.MN).padStart(2,'0') === m)
+      .reduce((s, d) => s + parseInt(d.Cnt || 0), 0);
+  });
+
+  const labels = monthKeys.map(mk => {
+    const [y, m] = mk.split('-');
+    return parseInt(m) === 1 ? `${y}\n1` : `${parseInt(m)}`;
+  });
+
+  const grandTotal = data.reduce((a, b) => a + b, 0);
+  const badge = document.getElementById('badge-total-grand');
+  if (badge) badge.innerHTML = `총 누적 건수 &nbsp;<strong style="color:var(--teal);font-size:15px;">${grandTotal.toLocaleString()}</strong>건`;
+
+  if (chartTotalBar) chartTotalBar.destroy();
+  chartTotalBar = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '전체 건수',
+        data,
+        backgroundColor: rgba(COLORS.violet, 0.6),
+        borderColor: COLORS.violet,
+        borderWidth: 1,
+        borderRadius: 4,
+        hoverBackgroundColor: COLORS.violet
+      }]
+    },
+    options: {
+      ...lineChartOptions('top'),
+      plugins: {
+        ...lineChartOptions('top').plugins,
+        legend: { display: false }
+      },
+      scales: {
+        ...lineChartOptions('top').scales,
+        y: { 
+          display: true, 
+          beginAtZero: true,
+          grid: { display: false } // Remove horizontal grid lines
+        }
+      }
+    }
+  });
 }
 
 // ─── Shared helpers ───────────────────────────────────────
@@ -214,7 +280,14 @@ function lineChartOptions(legendPos = 'right') {
       legend: {
         display: true,
         position: legendPos,
-        labels: { usePointStyle: true, pointStyleWidth: 10, color: '#6e6fa0', font: { size: 11 } }
+        labels: { 
+          usePointStyle: false, 
+          boxWidth: 15,
+          boxHeight: 6,
+          color: '#6e6fa0', 
+          font: { size: 10 },
+          padding: 8
+        }
       },
       tooltip: {
         callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toLocaleString()}건` }
@@ -248,9 +321,9 @@ function renderMonthlyTotalChart(monthlyData) {
       pointBackgroundColor: color,
       pointRadius: 3,
       pointHoverRadius: 5,
-      borderWidth: 2,
+      borderWidth: 1.5,
       tension: 0.3,
-      fill: false,
+      fill: true,
     };
   });
 
@@ -273,9 +346,24 @@ function renderMonthlyTotalChart(monthlyData) {
     data: { labels, datasets },
     options: {
       ...lineChartOptions('right'),
+      layout: {
+        padding: {
+          right: 30 // Move chart left, pushing legend further right
+        }
+      },
       plugins: {
         ...lineChartOptions('right').plugins,
-        legend: { display: true, position: 'right' }
+        legend: { 
+          display: true, 
+          position: 'right',
+          align: 'start', // Align to top to help 1-column layout
+          labels: {
+            boxWidth: 15,
+            boxHeight: 6,
+            font: { size: 10 },
+            padding: 8
+          }
+        }
       }
     }
   });
@@ -297,6 +385,8 @@ function renderMonthlyByYearChart(monthlyData) {
       monthlyData.filter(d => String(d.YR) === yr && parseInt(d.MN) === m)
                  .reduce((s, d) => s + parseInt(d.Cnt || 0), 0)
     );
+    if (data.every(v => v === 0)) return null;
+
     return {
       label: `${yr}년`,
       data,
@@ -308,14 +398,24 @@ function renderMonthlyByYearChart(monthlyData) {
       borderWidth: 2,
       tension: 0.3,
       fill: false,
+      spanGaps: false
     };
-  });
+  }).filter(Boolean);
 
   if (chartMonthlyByYear) chartMonthlyByYear.destroy();
   chartMonthlyByYear = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets },
-    options: lineChartOptions('right'),
+    options: {
+      ...lineChartOptions('right'),
+      scales: {
+        ...lineChartOptions('right').scales,
+        y: {
+          ...lineChartOptions('right').scales.y,
+          beginAtZero: true
+        }
+      }
+    }
   });
 }
 
@@ -351,7 +451,16 @@ function renderMonthlyInOutChart(inOutData) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: true, position: 'right' },
+        legend: { 
+          display: true,
+          position: 'right', 
+          labels: { 
+            boxWidth: 15, 
+            boxHeight: 6,
+            font: { size: 10 },
+            padding: 8
+          } 
+        },
         tooltip: {
           callbacks: {
             label: c => ` ${c.label}: ${c.parsed.toLocaleString()}건 (${((c.parsed / data.reduce((a,b)=>a+b,0)) * 100).toFixed(1)}%)`
@@ -359,6 +468,56 @@ function renderMonthlyInOutChart(inOutData) {
         }
       }
     }
+  });
+}
+
+// ─── NEW: 입원/외래/건진 월별 추세 (선 그래프) ───────────
+function renderInOutTrendChart(inOutData) {
+  const ctx = document.getElementById('chartInOutLine');
+  if (!ctx || !inOutData || !inOutData.length) return;
+
+  const monthKeys = buildMonthKeys(inOutData);
+  
+  // Merge types: GJ -> 건진
+  const normalizedData = inOutData.map(d => ({
+    ...d,
+    Type: (d.InOutType === 'GJ' || d.InOutType === '건진') ? 'GJ' : (d.InOutType || '기타')
+  }));
+
+  const categories = [...new Set(normalizedData.map(d => d.Type))].sort();
+  const palette = [COLORS.blue, COLORS.pink, COLORS.amber, COLORS.teal, COLORS.violet, COLORS.purple, '#ff8a65'];
+
+  const datasets = categories.map((cat, idx) => {
+    const color = palette[idx % palette.length];
+    const data = monthKeys.map(mk => {
+      const [y, m] = mk.split('-');
+      return normalizedData
+        .filter(d => String(d.YR) === y && String(d.MN).padStart(2,'0') === m && d.Type === cat)
+        .reduce((s, d) => s + parseInt(d.Cnt || 0), 0);
+    });
+    return {
+      label: cat,
+      data,
+      borderColor: color,
+      backgroundColor: rgba(color, 0.05),
+      pointBackgroundColor: color,
+      pointRadius: 2,
+      borderWidth: 1.5,
+      tension: 0.3,
+      fill: false
+    };
+  });
+
+  const labels = monthKeys.map(mk => {
+    const [y, m] = mk.split('-');
+    return parseInt(m) === 1 ? `${y}\n1` : `${parseInt(m)}`;
+  });
+
+  if (chartInOutLine) chartInOutLine.destroy();
+  chartInOutLine = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: lineChartOptions('right')
   });
 }
 
@@ -387,7 +546,13 @@ function renderHourlyChart(hourlyData) {
         fill: true
       }]
     },
-    options: lineChartOptions('top')
+    options: {
+      ...lineChartOptions('top'),
+      plugins: {
+        ...lineChartOptions('top').plugins,
+        legend: { display: false }
+      }
+    }
   });
 }
 
@@ -415,6 +580,14 @@ function renderDeptChart(deptData) {
     options: {
       ...lineChartOptions('top'),
       indexAxis: 'y',
+      scales: {
+        ...lineChartOptions('top').scales,
+        y: {
+          display: true,
+          grid: { display: false },
+          ticks: { color: '#6e6fa0', font: { size: 11 } }
+        }
+      },
       plugins: {
         ...lineChartOptions('top').plugins,
         legend: { display: false }
@@ -458,9 +631,16 @@ function renderWeekdayChart(weekdayData) {
 }
 
 // ─── MAIN: render all charts ─────────────────────────────
-function renderCharts(data) {
+function renderCharts(data, isInitial = false) {
+  // Render total bar chart only once (fixed) or when forced
+  if (isInitial || !isTotalChartRendered) {
+    renderTotalBarChart(data.monthly);
+    isTotalChartRendered = true;
+  }
+
   renderMonthlyTotalChart(data.monthly);
   renderMonthlyByYearChart(data.monthly);
+  renderInOutTrendChart(data.monthlyInOut);
   renderMonthlyInOutChart(data.monthlyInOut);
   renderHourlyChart(data.hourly);
   renderDeptChart(data.dept);
@@ -518,6 +698,7 @@ if (btnUpload && fileUpload) {
         const result = await response.json();
         if (response.ok) {
           alert(`Success: ${result.message}\n${result.details || ''}`);
+          isTotalChartRendered = false; // Reset fixed chart on new upload
           fetchDashboardData();
         } else {
           alert(`Error: ${result.message}\n${result.error || ''}`);

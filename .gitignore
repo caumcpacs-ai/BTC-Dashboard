@@ -3,10 +3,12 @@ uploads/
 *.accdb
 *.xlsx
 *.csv
-*.json
-scratch/
-test_*.ps1
+# Ignore data/temp json files
+stats.json
+cols.json
+temp_*.json
 test_*.json
-test_*.js
-temp_*
 *.log
+scratch/
+*_cache.json
+package-lock.json

@@ -61,6 +61,46 @@
       <!-- DASHBOARD: Vertical stacked charts -->
       <div class="dashboard-grid">
 
+        <!-- KPI SUMMARY ROW -->
+        <div class="kpi-row">
+          <div class="kpi-card" id="kpi-total">
+            <div class="kpi-icon icon-violet">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20v-6M9 20v-10M15 20v-2M6 20v-4M18 20v-8M3 20h18"/></svg>
+            </div>
+            <div class="kpi-content">
+              <span class="kpi-label">전체 촬영 건수</span>
+              <h3 class="kpi-value" id="val-total-count">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card" id="kpi-avg">
+            <div class="kpi-icon icon-teal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="kpi-content">
+              <span class="kpi-label">월평균 촬영</span>
+              <h3 class="kpi-value" id="val-avg-count">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card" id="kpi-patients">
+            <div class="kpi-icon icon-pink">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="kpi-content">
+              <span class="kpi-label">주요 환자 유형</span>
+              <h3 class="kpi-value" id="val-main-type">-</h3>
+            </div>
+          </div>
+          <div class="kpi-card" id="kpi-top-dept">
+            <div class="kpi-icon icon-amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div class="kpi-content">
+              <span class="kpi-label">최다 처방과</span>
+              <h3 class="kpi-value" id="val-top-dept">-</h3>
+            </div>
+          </div>
+        </div>
+
         <!-- NEW CHART: 전체 검사 현황 (고정) -->
         <div class="card chart-card" id="card-chart-total">
           <div class="chart-card-header">
@@ -123,7 +163,7 @@
               <p class="card-subtitle">환자 유형별 비중 (전체)</p>
             </div>
           </div>
-          <div class="chart-canvas-wrap" style="height:260px;">
+          <div class="chart-canvas-wrap" style="height:320px;">
             <canvas id="chartMonthlyInOut"></canvas>
           </div>
         </div>

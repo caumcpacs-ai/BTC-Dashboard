@@ -169,10 +169,11 @@ app.get('/api/stats', (req, res) => {
     const psScript = path.join(__dirname, 'get_stats_cs.ps1');
     const dbDir = __dirname;
     const filters = req.query.filters || '{}';
+    const refresh = req.query.refresh === 'true';
     const isDefault = filters === '{}' || filters === '""';
 
-    // If default request and we have cache, return it immediately
-    if (isDefault && statsCache) {
+    // If default request and we have cache, return it immediately (unless refresh is requested)
+    if (isDefault && statsCache && !refresh) {
         console.log('Serving stats from cache');
         return res.json(statsCache);
     }

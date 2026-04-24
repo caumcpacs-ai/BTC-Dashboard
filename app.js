@@ -47,7 +47,7 @@ const FILTER_LABELS = {
 };
 
 // ─── API Calls ────────────────────────────────────────────
-async function fetchDashboardData() {
+async function fetchDashboardData(forceRefresh = false) {
   try {
     let filterObj = {};
     for (let key in currentFilters) {
@@ -55,7 +55,7 @@ async function fetchDashboardData() {
         filterObj[key] = currentFilters[key].join("|||");
       }
     }
-    const url = `/api/stats?filters=${encodeURIComponent(JSON.stringify(filterObj))}`;
+    const url = `/api/stats?filters=${encodeURIComponent(JSON.stringify(filterObj))}&refresh=${forceRefresh}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch stats');
     currentDashboardData = await res.json();
@@ -101,7 +101,7 @@ function renderSlicers(filterData) {
     조회하기
   `;
   searchBtn.addEventListener('click', () => {
-    fetchDashboardData();
+    fetchDashboardData(true);
   });
   container.appendChild(searchBtn);
 
@@ -234,6 +234,7 @@ function renderTotalBarChart(monthlyData) {
         borderColor: COLORS.violet,
         borderWidth: 1,
         borderRadius: 4,
+        maxBarThickness: 40,
         hoverBackgroundColor: COLORS.violet
       }]
     },
@@ -264,6 +265,14 @@ function lineChartOptions(legendPos = 'right') {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 10,
+        right: 15,
+        bottom: 10,
+        left: 10
+      }
+    },
     interaction: { mode: 'index', intersect: false },
     scales: {
       x: {
@@ -271,22 +280,25 @@ function lineChartOptions(legendPos = 'right') {
         ticks: { color: '#6e6fa0', font: { size: 11 } }
       },
       y: {
-        display: false,
-        grid: { display: false },
-        ticks: { display: false }
+        display: true,
+        beginAtZero: true,
+        grid: { color: 'rgba(0,0,0,0.03)', drawTicks: false },
+        ticks: { color: '#9499c3', font: { size: 10 }, padding: 8 }
       }
     },
     plugins: {
       legend: {
         display: true,
         position: legendPos,
+        align: 'center',
         labels: { 
-          usePointStyle: false, 
-          boxWidth: 15,
-          boxHeight: 6,
-          color: '#6e6fa0', 
-          font: { size: 10 },
-          padding: 8
+          usePointStyle: true,
+          pointStyle: 'circle',
+          boxWidth: 8,
+          boxHeight: 8,
+          color: '#5b5c8f', 
+          font: { size: 11, weight: '500' },
+          padding: 15
         }
       },
       tooltip: {
@@ -319,10 +331,10 @@ function renderMonthlyTotalChart(monthlyData) {
       borderColor: color,
       backgroundColor: rgba(color, 0.05),
       pointBackgroundColor: color,
-      pointRadius: 3,
-      pointHoverRadius: 5,
-      borderWidth: 1.5,
-      tension: 0.3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      borderWidth: 2.5,
+      tension: 0.4,
       fill: true,
     };
   });
@@ -393,10 +405,10 @@ function renderMonthlyByYearChart(monthlyData) {
       borderColor: color,
       backgroundColor: rgba(color, 0.08),
       pointBackgroundColor: color,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      borderWidth: 2,
-      tension: 0.3,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      borderWidth: 3,
+      tension: 0.4,
       fill: false,
       spanGaps: false
     };
@@ -574,7 +586,8 @@ function renderDeptChart(deptData) {
         label: '\uAC80\uC0AC\uAC74\uC218',
         data,
         backgroundColor: COLORS.violet,
-        borderRadius: 4
+        borderRadius: 4,
+        maxBarThickness: 25
       }]
     },
     options: {
@@ -617,7 +630,8 @@ function renderWeekdayChart(weekdayData) {
         label: '\uAC80\uC0AC\uAC74\uC218',
         data: sorted,
         backgroundColor: COLORS.amber,
-        borderRadius: 4
+        borderRadius: 4,
+        maxBarThickness: 40
       }]
     },
     options: {
@@ -632,6 +646,31 @@ function renderWeekdayChart(weekdayData) {
 
 // ─── MAIN: render all charts ─────────────────────────────
 function renderCharts(data, isInitial = false) {
+  // Populate KPI Summary
+  if (data.monthly) {
+    const grandTotal = data.monthly.reduce((s, d) => s + parseInt(d.Cnt || 0), 0);
+    const monthKeys = buildMonthKeys(data.monthly);
+    const avg = monthKeys.length ? Math.round(grandTotal / monthKeys.length) : 0;
+    
+    document.getElementById('val-total-count').textContent = grandTotal.toLocaleString();
+    document.getElementById('val-avg-count').textContent = avg.toLocaleString();
+  }
+
+  if (data.monthlyInOut && data.monthlyInOut.length) {
+    const typeMap = {};
+    data.monthlyInOut.forEach(d => {
+      const t = d.InOutType || '기타';
+      typeMap[t] = (typeMap[t] || 0) + parseInt(d.Cnt || 0);
+    });
+    const mainType = Object.entries(typeMap).sort((a,b) => b[1] - a[1])[0][0];
+    document.getElementById('val-main-type').textContent = mainType;
+  }
+
+  if (data.dept && data.dept.length) {
+    const topDept = data.dept[0].Dept || '-';
+    document.getElementById('val-top-dept').textContent = topDept;
+  }
+
   // Render total bar chart only once (fixed) or when forced
   if (isInitial || !isTotalChartRendered) {
     renderTotalBarChart(data.monthly);
@@ -655,7 +694,7 @@ function renderCharts(data, isInitial = false) {
                     String(d.getDate()).padStart(2,'0') + ' ' + 
                     String(d.getHours()).padStart(2,'0') + ':' + 
                     String(d.getMinutes()).padStart(2,'0');
-    timeEl.innerHTML = `<span style="font-size:10px; opacity:0.7;">\uCD5C\uC885 \uC5C5\uB370\uC774\uD2B8:</span> ${dateStr}`;
+    timeEl.innerHTML = `<span style="font-size:10px; opacity:0.7;">최종 업데이트:</span> ${dateStr}`;
   }
 }
 
@@ -699,7 +738,7 @@ if (btnUpload && fileUpload) {
         if (response.ok) {
           alert(`Success: ${result.message}\n${result.details || ''}`);
           isTotalChartRendered = false; // Reset fixed chart on new upload
-          fetchDashboardData();
+          fetchDashboardData(true);
         } else {
           alert(`Error: ${result.message}\n${result.error || ''}`);
         }
